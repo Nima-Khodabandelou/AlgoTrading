@@ -1,12 +1,16 @@
 from pathlib import Path
 import pandas as pd
+from src.data.loader import load_data
 
 SYMBOL = "ETHUSDT"
 INTERVAL = "1h"
 
 INFILE = Path("data/features") / f"{SYMBOL}_{INTERVAL}_features.parquet"
 
-df = pd.read_parquet(INFILE)
+df = load_data(
+    start="2024-01-01",
+    end="2024-12-31",
+)
 
 # Previous 20-hour high/low (exclude current candle)
 df["prev_hh20"] = df["high"].rolling(20).max().shift(1)

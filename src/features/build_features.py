@@ -8,13 +8,17 @@
 
 from pathlib import Path
 import pandas as pd
+from src.data.loader import load_data
 
 SYMBOL = "ETHUSDT"
 INTERVAL = "1h"
 
 DATA = Path("data/parquet") / f"{SYMBOL}_{INTERVAL}.parquet"
 
-df = pd.read_parquet(DATA)
+df = load_data(
+    start="2024-01-01",
+    end="2024-12-31",
+)
 
 # keep only 2024
 df = df[
