@@ -1,105 +1,60 @@
 """
 engine.py
+=========
 
-Purpose
--------
-Executes an event-driven backtest.
+Backtest execution engine.
 
-Current assumptions
--------------------
-- Long only
-- One position at a time
-- Enter on next bar open
-- Exit on next bar open
-- Invest 100% of available capital
+Responsibilities
+----------------
+- Iterate over candles
+- Query the strategy
+- Send orders to the portfolio
 
-Future improvements
--------------------
-- Short selling
-- Commission
-- Slippage
-- Position sizing
-- Stop-loss
-- Take-profit
+The engine knows nothing about indicators or PnL calculations.
 """
 
-import pandas as pd
+from __future__ import annotations
 
-from .portfolio import Portfolio
+from src.backtest.portfolio import Portfolio
 
 
 class BacktestEngine:
 
-    def __init__(self, initial_capital=10_000):
+    def __init__(self, strategy, initial_capital):
 
-        self.portfolio = Portfolio(
-            initial_capital=initial_capital,
-            capital=initial_capital,
-        )
+        self.strategy = strategy
+        self.portfolio = Portfolio(initial_capital)
+
+    # ---------------------------------------------------------
 
     def run(self, df):
 
-        trades = []
+        signals = self.strategy.generate_signals(df)
 
-        p = self.portfolio
+        for i in range(len(signals) - 1):
 
-        for i in range(len(df) - 1):
+            row = signals.iloc[i]
 
-            row = df.iloc[i]
-
-            next_open = df.iloc[i + 1]["open"]
-            next_time = df.iloc[i + 1]["open_time"]
+            next_open = signals.iloc[i + 1]["open"]
+            next_time = signals.iloc[i + 1]["open_time"]
 
             # Entry
-            if (not p.position) and row["long_signal"]:
 
-                p.entry_price = next_open
-                p.entry_time = next_time
-                p.units = p.capital / p.entry_price
-                p.position = True
+            if (not self.portfolio.position) and row["long_signal"]:
+
+                self.portfolio.buy(next_open, next_time)
 
             # Exit
-            elif p.position and row["short_signal"]:
 
-                exit_price = next_open
-                exit_time = next_time
+            elif self.portfolio.position and row["short_signal"]:
 
-                pnl = p.units * (exit_price - p.entry_price)
+                self.portfolio.sell(next_open, next_time)
 
-                p.capital += pnl
+        # Close remaining position
 
-                trades.append(
-                    {
-                        "entry_time": p.entry_time,
-                        "exit_time": exit_time,
-                        "entry_price": p.entry_price,
-                        "exit_price": exit_price,
-                        "pnl": pnl,
-                        "capital": p.capital,
-                    }
-                )
+        self.portfolio.close_final(
+            signals.iloc[-1]["close"],
+            signals.iloc[-1]["open_time"],
+        )
 
-                p.position = False
-                p.units = 0.0
-
-        if p.position:
-
-            exit_price = df.iloc[-1]["close"]
-            exit_time = df.iloc[-1]["open_time"]
-
-            pnl = p.units * (exit_price - p.entry_price)
-
-            p.capital += pnl
-
-            trades.append(
-                {
-                    "entry_time": p.entry_time,
-                    "exit_time": exit_time,
-                    "entry_price": p.entry_price,
-                    "exit_price": exit_price,
-                    "pnl": pnl,
-                    "capital": p.capital,
-                }
-            )
-
-        return pd.DataFrame(trades)
+        return self.portfolio.trade_log()

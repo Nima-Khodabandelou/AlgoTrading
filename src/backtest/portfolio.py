@@ -1,35 +1,97 @@
 """
 portfolio.py
+============
 
-Purpose
--------
-Stores the current portfolio state used by the backtesting engine.
+Portfolio management.
 
-The portfolio tracks:
-- Current capital
-- Position status
-- Number of units held
-- Entry price
-- Entry time
+Responsibilities
+----------------
+- Track available capital
+- Track open position
+- Calculate PnL
+- Store trade history
 
-The engine updates this object during simulation.
+The backtest engine should not modify capital directly.
+Everything goes through Portfolio.
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 import pandas as pd
 
 
-@dataclass
 class Portfolio:
+    """
+    Represents one trading account.
+    """
 
-    initial_capital: float = 10_000.0
+    def __init__(self, initial_capital: float):
 
-    capital: float = 10_000.0
+        self.initial_capital = initial_capital
+        self.capital = initial_capital
 
-    position: bool = False
+        self.position = False
+        self.units = 0.0
 
-    units: float = 0.0
+        self.entry_price = None
+        self.entry_time = None
 
-    entry_price: float = 0.0
+        self.trades = []
 
-    entry_time: pd.Timestamp | None = None
+    # ---------------------------------------------------------
+    # Entry
+    # ---------------------------------------------------------
+
+    def buy(self, price, time):
+
+        if self.position:
+            return
+
+        self.units = self.capital / price
+
+        self.entry_price = price
+        self.entry_time = time
+
+        self.position = True
+
+    # ---------------------------------------------------------
+    # Exit
+    # ---------------------------------------------------------
+
+    def sell(self, price, time):
+
+        if not self.position:
+            return
+
+        pnl = self.units * (price - self.entry_price)
+
+        self.capital += pnl
+
+        self.trades.append(
+            {
+                "entry_time": self.entry_time,
+                "exit_time": time,
+                "entry_price": self.entry_price,
+                "exit_price": price,
+                "pnl": pnl,
+                "capital": self.capital,
+            }
+        )
+
+        self.position = False
+        self.units = 0.0
+        self.entry_price = None
+        self.entry_time = None
+
+    # ---------------------------------------------------------
+
+    def close_final(self, price, time):
+
+        if self.position:
+            self.sell(price, time)
+
+    # ---------------------------------------------------------
+
+    def trade_log(self):
+
+        return pd.DataFrame(self.trades)
