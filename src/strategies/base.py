@@ -1,19 +1,54 @@
 """
 base.py
 
-Abstract base class for every trading strategy.
+Purpose
+-------
+Defines the abstract interface for every trading strategy.
 
-Every strategy must implement generate_signals().
+Why?
+----
+The backtesting engine should never know whether it is running
+a breakout strategy, moving-average crossover, RSI strategy,
+or anything else.
+
+Every strategy must implement the same interface.
+
+Future strategies
+-----------------
+- Breakout
+- Moving Average
+- RSI
+- MACD
+- Bollinger Bands
+- Mean Reversion
+- Machine Learning
 """
 
 from abc import ABC, abstractmethod
+import pandas as pd
 
 
 class BaseStrategy(ABC):
+    """
+    Base class for every trading strategy.
+    """
 
     @abstractmethod
-    def generate_signals(self, df):
+    def entry_signal(
+        self,
+        row: pd.Series,
+    ) -> bool:
         """
-        Returns a DataFrame containing trading signals.
+        Return True if a long position should be opened.
+        """
+        pass
+
+    @abstractmethod
+    def exit_signal(
+        self,
+        row: pd.Series,
+    ) -> bool:
+        """
+        Return True if the current position should be closed.
         """
         pass

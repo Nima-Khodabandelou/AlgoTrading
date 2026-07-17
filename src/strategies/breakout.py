@@ -1,15 +1,35 @@
 """
 breakout.py
 
-Breakout trading strategy.
+Purpose
+-------
+Implementation of the 20-period breakout strategy.
 
-This strategy is responsible for:
-1. Computing its own indicators.
-2. Generating entry/exit signals.
-3. Returning an enriched DataFrame.
+Trading Rules
+-------------
+Entry
+-----
+Buy when a breakout long signal is True.
 
-The backtest engine should know nothing about how the
-signals are created.
+Exit
+----
+Exit when a breakout short signal is True.
+
+Notes
+-----
+The strategy itself does not execute trades.
+It only answers two questions:
+
+1. Should we enter?
+2. Should we exit?
+
+The BacktestEngine handles:
+- capital
+- position sizing
+- PnL
+- trade execution
+
+This separation allows the same engine to run any strategy.
 """
 
 import pandas as pd
@@ -19,48 +39,38 @@ from src.strategies.base import BaseStrategy
 
 class BreakoutStrategy(BaseStrategy):
     """
-    20-bar breakout strategy.
-
-    Entry:
-        Close > previous 20-bar highest high.
-
-    Exit:
-        Close < previous 20-bar lowest low.
+    20-period breakout strategy.
     """
 
-    def __init__(self, lookback=20):
-        self.lookback = lookback
-
-    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+    def __init__(self):
         """
-        Generate indicators and trading signals.
+        No parameters yet.
 
-        Parameters
-        ----------
-        df : pandas.DataFrame
+        Future examples
+        ---------------
+        lookback=20
+        stop_loss=0.03
+        take_profit=0.08
+        """
+        pass
 
-        Returns
-        -------
-        pandas.DataFrame
+    def entry_signal(
+        self,
+        row: pd.Series,
+    ) -> bool:
+        """
+        Return True when a long entry should occur.
         """
 
-        df = df.copy()
+        return bool(row["long_signal"])
 
-        # -------------------------
-        # Indicators
-        # -------------------------
+    def exit_signal(
+        self,
+        row: pd.Series,
+    ) -> bool:
+        """
+        Return True when the current long position
+        should be closed.
+        """
 
-        df["hh"] = df["high"].rolling(self.lookback).max()
-        df["ll"] = df["low"].rolling(self.lookback).min()
-
-        df["prev_hh"] = df["hh"].shift(1)
-        df["prev_ll"] = df["ll"].shift(1)
-
-        # -------------------------
-        # Signals
-        # -------------------------
-
-        df["long_signal"] = df["close"] > df["prev_hh"]
-        df["short_signal"] = df["close"] < df["prev_ll"]
-
-        return df
+        return bool(row["short_signal"])
