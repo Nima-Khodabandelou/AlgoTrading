@@ -1,80 +1,36 @@
 """
 engine.py
 
-Purpose
--------
-Generic event-driven backtesting engine.
+Generic event-driven backtest engine.
 
 Responsibilities
 ----------------
-- Execute trades
-- Manage capital
-- Manage positions
-- Calculate PnL
+- Execute strategy signals
+- Apply commission and slippage
+- Support ATR stop-loss
 - Record completed trades
-
-Design
-------
-The engine is strategy-agnostic.
-
-It never checks:
-    row["long_signal"]
-    row["short_signal"]
-
-Instead, it asks the supplied strategy:
-
-    strategy.entry_signal(row)
-    strategy.exit_signal(row)
-
-Any strategy implementing BaseStrategy can therefore be used
-without modifying this engine.
-
-Future Improvements
--------------------
-- Commission
-- Slippage
-- Short selling
-- Stop-loss
-- Take-profit
-- Position sizing
-- Multiple simultaneous positions
-- Portfolio support
 """
 
 import pandas as pd
 
 
 class BacktestEngine:
-    """
-    Generic event-driven backtesting engine.
-    """
 
     def __init__(
         self,
         strategy,
-        initial_capital: float,
+        initial_capital,
+        commission=0.0,
+        slippage=0.0,
     ):
         self.strategy = strategy
         self.initial_capital = initial_capital
+        self.commission = commission
+        self.slippage = slippage
 
-    def run(
-        self,
-        df: pd.DataFrame,
-    ) -> pd.DataFrame:
-        """
-        Execute the supplied strategy on the dataframe.
+    def run(self, df):
 
-        Parameters
-        ----------
-        df : pandas.DataFrame
-            Price data together with any features/signals required
-            by the selected strategy.
-
-        Returns
-        -------
-        pandas.DataFrame
-            Completed trades.
-        """
+        df = self.strategy.prepare_data(df.copy())
 
         capital = self.initial_capital
 
@@ -83,84 +39,90 @@ class BacktestEngine:
 
         entry_price = 0.0
         entry_time = None
+        stop_price = None
 
         trades = []
 
-        # Need next candle open for realistic execution
         for i in range(len(df) - 1):
 
             row = df.iloc[i]
 
-            next_row = df.iloc[i + 1]
+            next_open = df.iloc[i + 1]["open"]
+            next_time = df.iloc[i + 1]["open_time"]
 
-            next_open = next_row["open"]
-            next_time = next_row["open_time"]
+            # ---------------- Entry ----------------
 
-            # -----------------------------
-            # Entry
-            # -----------------------------
-            if (
-                not position
-                and self.strategy.entry_signal(row)
-            ):
+            if (not position) and row["long_signal"]:
 
-                entry_price = next_open
+                entry_price = next_open * (
+                    1 + self.commission + self.slippage
+                )
+
+                stop_price = (
+                    entry_price
+                    - self.strategy.atr_multiple * row["atr"]
+                )
+
                 entry_time = next_time
-
                 units = capital / entry_price
-
                 position = True
 
-            # -----------------------------
-            # Exit
-            # -----------------------------
-            elif (
-                position
-                and self.strategy.exit_signal(row)
-            ):
+            # ---------------- Exit -----------------
 
-                exit_price = next_open
-                exit_time = next_time
+            elif position:
 
-                pnl = units * (
-                    exit_price - entry_price
-                )
+                exit_trade = False
 
-                capital += pnl
+                if row["low"] <= stop_price:
 
-                trades.append(
-                    {
-                        "entry_time": entry_time,
-                        "exit_time": exit_time,
-                        "entry_price": entry_price,
-                        "exit_price": exit_price,
-                        "pnl": pnl,
-                        "capital": capital,
-                    }
-                )
+                    exit_price = stop_price
+                    exit_trade = True
 
-                position = False
-                units = 0.0
+                elif row["short_signal"]:
 
-        # ---------------------------------
+                    exit_price = next_open * (
+                        1 - self.commission - self.slippage
+                    )
+
+                    exit_trade = True
+
+                if exit_trade:
+
+                    pnl = units * (exit_price - entry_price)
+
+                    capital += pnl
+
+                    trades.append(
+                        {
+                            "entry_time": entry_time,
+                            "exit_time": next_time,
+                            "entry_price": entry_price,
+                            "exit_price": exit_price,
+                            "pnl": pnl,
+                            "capital": capital,
+                        }
+                    )
+
+                    position = False
+                    units = 0.0
+                    stop_price = None
+
         # Close remaining position
-        # ---------------------------------
-
         if position:
 
-            exit_price = df.iloc[-1]["close"]
-            exit_time = df.iloc[-1]["open_time"]
-
-            pnl = units * (
-                exit_price - entry_price
+            exit_price = (
+                df.iloc[-1]["close"]
+                * (1 - self.commission - self.slippage)
             )
+
+            pnl = units * (exit_price - entry_price)
 
             capital += pnl
 
             trades.append(
                 {
                     "entry_time": entry_time,
-                    "exit_time": exit_time,
+                    "exit_time": df.iloc[-1]["open_time"],
                     "entry_price": entry_price,
                     "exit_price": exit_price,
                     "pnl": pnl,

@@ -23,6 +23,8 @@ from src.config.settings import (
     INITIAL_CAPITAL,
     TRAIN_START,
     TRAIN_END,
+    COMMISSION,
+    SLIPPAGE,
 )
 
 from src.backtest.engine import BacktestEngine
@@ -67,6 +69,8 @@ def main():
     engine = BacktestEngine(
         strategy=strategy,
         initial_capital=INITIAL_CAPITAL,
+        commission=COMMISSION,
+        slippage=SLIPPAGE,
     )
 
     trades = engine.run(df)
