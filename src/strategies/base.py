@@ -1,27 +1,16 @@
 """
 base.py
 
-Purpose
--------
-Defines the abstract interface for every trading strategy.
+Defines the interface that every trading strategy must implement.
 
-Why?
-----
-The backtesting engine should never know whether it is running
-a breakout strategy, moving-average crossover, RSI strategy,
-or anything else.
+A strategy is responsible for
 
-Every strategy must implement the same interface.
+- computing its own indicators
+- generating entry/exit signals
+- deciding whether to enter
+- deciding whether to exit
 
-Future strategies
------------------
-- Breakout
-- Moving Average
-- RSI
-- MACD
-- Bollinger Bands
-- Mean Reversion
-- Machine Learning
+The BacktestEngine never knows how the signals are produced.
 """
 
 from abc import ABC, abstractmethod
@@ -30,8 +19,28 @@ import pandas as pd
 
 class BaseStrategy(ABC):
     """
-    Base class for every trading strategy.
+    Base class for all trading strategies.
     """
+
+    @abstractmethod
+    def prepare_data(
+        self,
+        df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """
+        Compute indicators and signals.
+
+        Parameters
+        ----------
+        df : DataFrame
+
+        Returns
+        -------
+        DataFrame
+            DataFrame containing every column required by
+            this strategy.
+        """
+        pass
 
     @abstractmethod
     def entry_signal(
@@ -39,7 +48,7 @@ class BaseStrategy(ABC):
         row: pd.Series,
     ) -> bool:
         """
-        Return True if a long position should be opened.
+        Return True when a long position should be opened.
         """
         pass
 
@@ -49,6 +58,6 @@ class BaseStrategy(ABC):
         row: pd.Series,
     ) -> bool:
         """
-        Return True if the current position should be closed.
+        Return True when a long position should be closed.
         """
         pass

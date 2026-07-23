@@ -3,52 +3,66 @@ run.py
 
 Purpose
 -------
-Main entry point for running a backtest.
+Entry point for running a backtest.
 
-Responsibilities
-----------------
-1. Load trading signals.
-2. Instantiate the selected strategy.
-3. Create the backtesting engine.
-4. Execute the backtest.
-5. Print trade log.
-6. Print performance report.
-
-This file should remain very small. It simply orchestrates the workflow.
-The trading logic belongs in strategies/.
-The execution logic belongs in engine.py.
-The reporting logic belongs in metrics.py.
+Workflow
+--------
+1. Load OHLCV data
+2. Instantiate strategy
+3. Let the strategy prepare indicators/signals
+4. Run the backtest engine
+5. Report performance
 """
-
-from pathlib import Path
 
 import pandas as pd
 
 from src.config.settings import (
-    SIGNALS_DIR,
+    PARQUET_DIR,
     SYMBOL,
     TIMEFRAME,
     INITIAL_CAPITAL,
+    TRAIN_START,
+    TRAIN_END,
 )
 
-from src.strategies.breakout import BreakoutStrategy
 from src.backtest.engine import BacktestEngine
 from src.backtest.metrics import report
 
+from src.strategies.breakout import BreakoutStrategy
+
 
 def main():
-    """
-    Run the complete backtest.
-    """
 
-    signal_file = (
-        SIGNALS_DIR /
-        f"{SYMBOL}_{TIMEFRAME}_breakout.parquet"
+    # --------------------------------------------------
+    # Load raw price data
+    # --------------------------------------------------
+
+    data_file = PARQUET_DIR / f"{SYMBOL}_{TIMEFRAME}.parquet"
+
+    df = pd.read_parquet(data_file)
+
+    # ------------------------------------------
+    # Select backtest period
+    # ------------------------------------------
+
+    df = df[
+        (df["open_time"] >= TRAIN_START)
+        & (df["open_time"] <= TRAIN_END)
+    ].reset_index(drop=True)
+
+    # --------------------------------------------------
+    # Strategy
+    # --------------------------------------------------
+
+    strategy = BreakoutStrategy(
+        lookback=20
     )
 
-    df = pd.read_parquet(signal_file)
+    df = strategy.prepare_data(df)
 
-    strategy = BreakoutStrategy()
+    # --------------------------------------------------
+    # Backtest
+    # --------------------------------------------------
 
     engine = BacktestEngine(
         strategy=strategy,
@@ -57,15 +71,13 @@ def main():
 
     trades = engine.run(df)
 
-    print()
-    print("=" * 10, "TRADE LOG", "=" * 10)
-    print(trades)
-
-    print()
+    # --------------------------------------------------
+    # Report
+    # --------------------------------------------------
 
     report(
-        trades=trades,
-        initial_capital=INITIAL_CAPITAL,
+        trades,
+        INITIAL_CAPITAL,
     )
 
 

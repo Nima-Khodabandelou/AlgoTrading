@@ -1,35 +1,17 @@
 """
 breakout.py
 
-Purpose
--------
-Implementation of the 20-period breakout strategy.
+20-period Donchian breakout strategy.
 
-Trading Rules
--------------
-Entry
+Rules
 -----
-Buy when a breakout long signal is True.
+Entry
+    Close > previous 20-bar highest high
 
 Exit
-----
-Exit when a breakout short signal is True.
+    Close < previous 20-bar lowest low
 
-Notes
------
-The strategy itself does not execute trades.
-It only answers two questions:
-
-1. Should we enter?
-2. Should we exit?
-
-The BacktestEngine handles:
-- capital
-- position sizing
-- PnL
-- trade execution
-
-This separation allows the same engine to run any strategy.
+The strategy computes all required indicators itself.
 """
 
 import pandas as pd
@@ -38,39 +20,49 @@ from src.strategies.base import BaseStrategy
 
 
 class BreakoutStrategy(BaseStrategy):
-    """
-    20-period breakout strategy.
-    """
 
-    def __init__(self):
-        """
-        No parameters yet.
+    def __init__(self, lookback: int = 20):
+        self.lookback = lookback
 
-        Future examples
-        ---------------
-        lookback=20
-        stop_loss=0.03
-        take_profit=0.08
+    def prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        pass
-
-    def entry_signal(
-        self,
-        row: pd.Series,
-    ) -> bool:
-        """
-        Return True when a long entry should occur.
+        Compute indicators and trading signals.
         """
 
+        df = df.copy()
+
+        # -----------------------------
+        # Donchian Channel
+        # -----------------------------
+        df["hh"] = (
+            df["high"]
+            .rolling(self.lookback)
+            .max()
+        )
+
+        df["ll"] = (
+            df["low"]
+            .rolling(self.lookback)
+            .min()
+        )
+
+        # Previous values (avoid look-ahead bias)
+        df["prev_hh"] = df["hh"].shift(1)
+        df["prev_ll"] = df["ll"].shift(1)
+
+        # Signals
+        df["long_signal"] = (
+            df["close"] > df["prev_hh"]
+        )
+
+        df["short_signal"] = (
+            df["close"] < df["prev_ll"]
+        )
+
+        return df
+
+    def entry_signal(self, row: pd.Series) -> bool:
         return bool(row["long_signal"])
 
-    def exit_signal(
-        self,
-        row: pd.Series,
-    ) -> bool:
-        """
-        Return True when the current long position
-        should be closed.
-        """
-
+    def exit_signal(self, row: pd.Series) -> bool:
         return bool(row["short_signal"])
