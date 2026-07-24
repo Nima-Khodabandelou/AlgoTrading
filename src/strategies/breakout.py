@@ -66,7 +66,7 @@ class BreakoutStrategy(BaseStrategy):
         # ---------------- Signals ----------------
 
         df["long_signal"] = (
-            df["close"] > df["prev_hh"]
+            df["high"] > df["prev_hh"]
         )
 
         df["short_signal"] = (

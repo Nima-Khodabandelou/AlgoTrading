@@ -58,20 +58,25 @@ def plot_trades(df, trades, stop_trace):
         )
     )
 
-    # ---------------- Trailing Stop ----------------
+    # ---------------- Trailing Stops ----------------
 
-    fig.add_trace(
-        go.Scatter(
-            x=stop_trace["time"],
-            y=stop_trace["stop"],
-            mode="lines",
-            name="Trailing Stop",
-            line=dict(
-                color="red",
-                width=2,
-            ),
-        )
-    )
+    if not stop_trace.empty:
+
+        for _, group in stop_trace.groupby("trade_id"):
+
+            fig.add_trace(
+                go.Scatter(
+                    x=group["time"],
+                    y=group["stop"],
+                    mode="lines",
+                    showlegend=False,
+                    line=dict(
+                        color="red",
+                        width=2,
+                    ),
+                    hovertemplate="Stop: %{y:.2f}<extra></extra>",
+                )
+            )
 
     fig.update_layout(
         template="plotly_dark",
