@@ -1,87 +1,71 @@
 """
 run.py
 
-Purpose
--------
-Entry point for running a backtest.
-
-Workflow
---------
-1. Load OHLCV data
-2. Instantiate strategy
-3. Let the strategy prepare indicators/signals
-4. Run the backtest engine
-5. Report performance
+Run a backtest.
 """
 
-import pandas as pd
-
+from src.backtest.engine import BacktestEngine
 from src.config.settings import (
-    PARQUET_DIR,
-    SYMBOL,
-    TIMEFRAME,
-    INITIAL_CAPITAL,
     TRAIN_START,
     TRAIN_END,
+    INITIAL_CAPITAL,
     COMMISSION,
     SLIPPAGE,
 )
-
-from src.backtest.engine import BacktestEngine
-from src.backtest.metrics import report
-
+from src.data.loader import load_data
 from src.strategies.breakout import BreakoutStrategy
+from src.visualization.plot_trades import plot_trades
 
 
 def main():
 
-    # --------------------------------------------------
-    # Load raw price data
-    # --------------------------------------------------
-
-    data_file = PARQUET_DIR / f"{SYMBOL}_{TIMEFRAME}.parquet"
-
-    df = pd.read_parquet(data_file)
-
-    # ------------------------------------------
-    # Select backtest period
-    # ------------------------------------------
-
-    df = df[
-        (df["open_time"] >= TRAIN_START)
-        & (df["open_time"] <= TRAIN_END)
-    ].reset_index(drop=True)
-
-    # --------------------------------------------------
-    # Strategy
-    # --------------------------------------------------
-
-    strategy = BreakoutStrategy(
-        lookback=20
+    df = load_data(
+        start=TRAIN_START,
+        end=TRAIN_END,
     )
 
-    df = strategy.prepare_data(df)
-
-    # --------------------------------------------------
-    # Backtest
-    # --------------------------------------------------
+    strategy = BreakoutStrategy()
 
     engine = BacktestEngine(
         strategy=strategy,
         initial_capital=INITIAL_CAPITAL,
         commission=COMMISSION,
         slippage=SLIPPAGE,
+        risk_per_trade=0.01,
     )
 
-    trades = engine.run(df)
+    trades, stop_trace = engine.run(df)
 
-    # --------------------------------------------------
-    # Report
-    # --------------------------------------------------
+    print("\n========== TRADE LOG ==========\n")
+    print(trades)
 
-    report(
-        trades,
-        INITIAL_CAPITAL,
+    print("\n=============== PERFORMANCE ===============")
+
+    print(f"Trades          : {len(trades)}")
+
+    if len(trades):
+
+        final_capital = trades.iloc[-1]["capital"]
+        total_return = (
+            (final_capital - INITIAL_CAPITAL)
+            / INITIAL_CAPITAL
+            * 100
+        )
+
+        print(
+            f"Initial Capital : ${INITIAL_CAPITAL:,.2f}"
+        )
+        print(
+            f"Final Capital   : ${final_capital:,.2f}"
+        )
+        print(
+            f"Return          : {total_return:.2f}%"
+        )
+
+    plot_trades(
+        df=df,
+        trades=trades,
+        stop_trace=stop_trace,
     )
 
 

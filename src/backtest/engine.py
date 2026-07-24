@@ -2,14 +2,6 @@
 engine.py
 
 Generic event-driven backtest engine.
-
-Features
---------
-- Long-only execution
-- Risk-based position sizing
-- Commission & slippage
-- ATR initial stop
-- ATR trailing stop
 """
 
 import pandas as pd
@@ -23,11 +15,13 @@ class BacktestEngine:
         initial_capital,
         commission=0.0,
         slippage=0.0,
+        risk_per_trade=0.01,
     ):
         self.strategy = strategy
         self.initial_capital = initial_capital
         self.commission = commission
         self.slippage = slippage
+        self.risk_per_trade = risk_per_trade
 
     def run(self, df):
 
@@ -41,20 +35,23 @@ class BacktestEngine:
         entry_price = 0.0
         entry_time = None
 
-        stop_price = None
+        stop_price = 0.0
+        highest_price = 0.0
+        trail_active = False
+        entry_atr = 0.0
 
         trades = []
+        stop_trace = []
 
         for i in range(len(df) - 1):
 
             row = df.iloc[i]
+            next_row = df.iloc[i + 1]
 
-            next_open = df.iloc[i + 1]["open"]
-            next_time = df.iloc[i + 1]["open_time"]
+            next_open = next_row["open"]
+            next_time = next_row["open_time"]
 
-            # -----------------------------
-            # ENTRY
-            # -----------------------------
+            # ---------------- ENTRY ----------------
 
             if (not position) and row["long_signal"]:
 
@@ -62,61 +59,72 @@ class BacktestEngine:
                     1 + self.commission + self.slippage
                 )
 
+                entry_atr = row["atr"]
+
                 stop_price = (
                     entry_price
-                    - self.strategy.atr_multiple * row["atr"]
+                    - self.strategy.atr_multiple * entry_atr
+                )
+
+                highest_price = entry_price
+                trail_active = False
+
+                risk_amount = (
+                    capital * self.risk_per_trade
                 )
 
                 risk_per_unit = (
                     entry_price - stop_price
                 )
 
-                if (
-                    pd.isna(risk_per_unit)
-                    or risk_per_unit <= 0
-                ):
-                    continue
-
-                risk_amount = (
-                    capital
-                    * self.strategy.risk_per_trade
-                )
-
                 units = (
-                    risk_amount
-                    / risk_per_unit
+                    risk_amount / risk_per_unit
+                    if risk_per_unit > 0
+                    else 0
                 )
-
-                max_units = capital / entry_price
-                units = min(units, max_units)
 
                 entry_time = next_time
                 position = True
 
-            # -----------------------------
-            # MANAGE OPEN POSITION
-            # -----------------------------
+            # ---------------- POSITION ----------------
 
             elif position:
 
-                # ATR trailing stop
-                new_stop = (
-                    row["close"]
-                    - self.strategy.atr_multiple
-                    * row["atr"]
+                highest_price = max(
+                    highest_price,
+                    row["high"],
                 )
 
+                # Activate trailing only after +1 ATR
                 if (
-                    not pd.isna(new_stop)
-                    and new_stop > stop_price
+                    not trail_active
+                    and highest_price >= (
+                        entry_price
+                        + self.strategy.trail_start_atr * entry_atr
+                    )
                 ):
-                    stop_price = new_stop
+                    trail_active = True
+
+                if trail_active:
+
+                    candidate = (
+                        highest_price
+                        - self.strategy.atr_multiple * row["atr"]
+                    )
+
+                    stop_price = max(
+                        stop_price,
+                        candidate,
+                    )
+
+                stop_trace.append(
+                    {
+                        "time": row["open_time"],
+                        "stop": stop_price,
+                    }
+                )
 
                 exit_trade = False
-                
-                # -----------------------------
-                # EXIT CONDITIONS
-                # -----------------------------
 
                 if row["low"] <= stop_price:
 
@@ -126,7 +134,9 @@ class BacktestEngine:
                 elif row["short_signal"]:
 
                     exit_price = next_open * (
-                        1 - self.commission - self.slippage
+                        1
+                        - self.commission
+                        - self.slippage
                     )
 
                     exit_trade = True
@@ -145,7 +155,6 @@ class BacktestEngine:
                             "exit_time": next_time,
                             "entry_price": entry_price,
                             "exit_price": exit_price,
-                            "units": units,
                             "pnl": pnl,
                             "capital": capital,
                         }
@@ -153,38 +162,11 @@ class BacktestEngine:
 
                     position = False
                     units = 0.0
+                    highest_price = 0.0
+                    stop_price = 0.0
+                    trail_active = False
 
-                    entry_price = 0.0
-                    entry_time = None
-                    stop_price = None
-
-        # -----------------------------
-        # CLOSE LAST POSITION
-        # -----------------------------
-
-        if position:
-
-            exit_price = (
-                df.iloc[-1]["close"]
-                * (1 - self.commission - self.slippage)
-            )
-
-            pnl = units * (
-                exit_price - entry_price
-            )
-
-            capital += pnl
-
-            trades.append(
-                {
-                    "entry_time": entry_time,
-                    "exit_time": df.iloc[-1]["open_time"],
-                    "entry_price": entry_price,
-                    "exit_price": exit_price,
-                    "units": units,
-                    "pnl": pnl,
-                    "capital": capital,
-                }
-            )
-
-        return pd.DataFrame(trades)
+        return (
+            pd.DataFrame(trades),
+            pd.DataFrame(stop_trace),
+        )
